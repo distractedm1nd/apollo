@@ -3,6 +3,7 @@ package apollo
 import (
 	"context"
 	"fmt"
+	"math/rand"
 
 	"github.com/celestiaorg/celestia-app/app"
 	"github.com/celestiaorg/celestia-app/app/encoding"
@@ -27,7 +28,21 @@ type Service interface {
 	Stop(context.Context) error
 }
 
-type Endpoints map[string]string
+type Endpoints map[string][]string
+
+func (e Endpoints) Add(key string, values ...string) {
+	e[key] = append(e[key], values...)
+}
+
+// GetRandom returns a random active endpoint for the given key.
+func (e Endpoints) GetRandom(key string) (string, error) {
+	v, ok := e[key]
+	if !ok || len(v) == 0 {
+		return "", fmt.Errorf("no endpoints for key %s", key)
+	}
+
+	return v[rand.Intn(len(v))], nil
+}
 
 func (e Endpoints) String() string {
 	var output string

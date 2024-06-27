@@ -191,12 +191,15 @@ func (s *Service) Start(ctx context.Context, dir string, genesis *types.GenesisD
 		apiServer.Close, cleanupGRPC, stopNode,
 	}
 
-	return apollo.Endpoints{
-		RPCEndpointLabel:  s.config.TmConfig.RPC.ListenAddress,
-		GRPCEndpointLabel: s.config.AppConfig.GRPC.Address,
-		APIEndpointLabel:  s.config.AppConfig.API.Address,
-		APIDocsLabel:      DocsEndpint,
-	}, nil
+	var endpoints apollo.Endpoints
+	endpoints = make(map[string][]string)
+	// TODO(@distractedm1nd): Okay, the add was necessary for a previous iteration but now its just unnecessarily ugly
+	endpoints.Add(RPCEndpointLabel, s.config.TmConfig.RPC.ListenAddress)
+	endpoints.Add(GRPCEndpointLabel, s.config.AppConfig.GRPC.Address)
+	endpoints.Add(APIEndpointLabel, s.config.AppConfig.API.Address)
+	endpoints.Add(APIDocsLabel, DocsEndpint)
+
+	return endpoints, nil
 }
 
 func (s *Service) Stop(context.Context) error {

@@ -15,9 +15,8 @@ import (
 	"github.com/cmwaters/apollo"
 	"github.com/cmwaters/apollo/faucet"
 	"github.com/cmwaters/apollo/genesis"
-	"github.com/cmwaters/apollo/node/bridge"
 	"github.com/cmwaters/apollo/node/consensus"
-	"github.com/cmwaters/apollo/node/light"
+	"github.com/cmwaters/apollo/node/factory"
 )
 
 const ApolloDir = ".apollo"
@@ -53,10 +52,11 @@ func Run(ctx context.Context) error {
 	lightCfg := nodebuilder.DefaultConfig(node.Light)
 	lightCfg.RPC.SkipAuth = true
 
-	return apollo.Run(ctx, dir, genesis.NewDefaultGenesis(),
-		consensus.New(consensusCfg),
-		faucet.New(faucet.DefaultConfig()),
-		bridge.New(nodebuilder.DefaultConfig(node.Bridge)),
-		light.New(lightCfg),
-	)
+	var nodes []apollo.Service
+
+	nodes = append(nodes, consensus.New(consensusCfg))
+	nodes = append(nodes, faucet.New(faucet.DefaultConfig()))
+	nodes = append(nodes, factory.CreateServices(2, 2)...)
+
+	return apollo.Run(ctx, dir, genesis.NewDefaultGenesis(), nodes...)
 }

@@ -99,7 +99,7 @@ func (s *Service) Setup(ctx context.Context, dir string, pendingGenesis *types.G
 }
 
 func (s *Service) Start(ctx context.Context, dir string, _ *types.GenesisDoc, input apollo.Endpoints) (apollo.Endpoints, error) {
-	conn, err := grpc.Dial(input[consensus.GRPCEndpointLabel], grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial(input[consensus.GRPCEndpointLabel][0], grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +210,7 @@ func (s *Service) Start(ctx context.Context, dir string, _ *types.GenesisDoc, in
 	}
 
 	return apollo.Endpoints{
-		FaucetAPILabel: fmt.Sprintf("http://%s", s.config.APIAddress),
+		FaucetAPILabel: []string{fmt.Sprintf("http://%s", s.config.APIAddress)},
 	}, nil
 }
 

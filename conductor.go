@@ -56,7 +56,7 @@ func New(dir string, genesis *genesis.Genesis, services ...Service) (*Conductor,
 
 	c := &Conductor{
 		services:        serviceMap,
-		activeEndpoints: make(map[string]string),
+		activeEndpoints: make(map[string][]string),
 		activeServices:  make(map[string]Service),
 		startOrder:      make([]string, 0),
 		genesis:         genesis.WithChainID(string(p2p.Private)),
@@ -109,10 +109,21 @@ func (c *Conductor) Setup(ctx context.Context) error {
 			if err := os.MkdirAll(dir, os.ModePerm); err != nil {
 				return fmt.Errorf("failed to create directory for service %s: %w", name, err)
 			}
+
+			// supress output from services
+			rescueStdout := os.Stdout
+			_, w, _ := os.Pipe()
+			os.Stdout = w
+
 			modifier, err := service.Setup(ctx, dir, pendingGenesis)
 			if err != nil {
 				return fmt.Errorf("failed to setup service %s: %w", name, err)
 			}
+
+			// restore stdout
+			w.Close()
+			os.Stdout = rescueStdout
+
 			if modifier != nil {
 				c.genesis = c.genesis.WithModifiers(modifier)
 			}
@@ -173,15 +184,25 @@ func (c *Conductor) startService(ctx context.Context, name string) error {
 		}
 	}
 
+	// supress output from services
+	rescueStdout := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
 	dir := filepath.Join(c.rootDir, name)
 	activeEndpoints, err := service.Start(ctx, dir, c.genesisDoc, c.activeEndpoints)
+
+	// restore stdout
+	w.Close()
+	os.Stdout = rescueStdout
+
 	if err != nil {
 		return fmt.Errorf("failed to start service %s: %w", name, err)
 	}
 
 	// Update active endpoints after successful service start
 	for key, value := range activeEndpoints {
-		c.activeEndpoints[key] = value
+		c.activeEndpoints.Add(key, value...)
 	}
 	c.activeServices[name] = service
 	c.startOrder = append(c.startOrder, name)
@@ -285,7 +306,7 @@ func (c *Conductor) serviceStatus() map[string]Status {
 	for name, service := range c.services {
 		status := Status{
 			RequiredEndpoints: service.EndpointsNeeded(),
-			ProvidesEndpoints: make(map[string]string),
+			ProvidesEndpoints: make(map[string][]string),
 		}
 		if _, ok := c.activeServices[name]; ok {
 			status.Running = true

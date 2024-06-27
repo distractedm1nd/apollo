@@ -8,7 +8,6 @@ import (
 
 	"github.com/celestiaorg/celestia-app/app"
 	"github.com/celestiaorg/celestia-app/app/encoding"
-	"github.com/celestiaorg/celestia-node/libs/utils"
 	"github.com/celestiaorg/celestia-node/nodebuilder"
 	"github.com/celestiaorg/celestia-node/nodebuilder/node"
 	"github.com/celestiaorg/celestia-node/nodebuilder/p2p"
@@ -28,10 +27,11 @@ const (
 	LightServiceName  = "light-node"
 	RPCEndpointLabel  = "light-rpc"
 	DocsEndpointLabel = "light-api-docs"
-	DocsEndpint       = "https://node-rpc-docs.celestia.org"
+	DocsEndpoint      = "https://node-rpc-docs.celestia.org"
 )
 
 type Service struct {
+	uuid    string
 	node    *nodebuilder.Node
 	store   nodebuilder.Store
 	chainID string
@@ -40,12 +40,13 @@ type Service struct {
 
 func New(config *nodebuilder.Config) *Service {
 	return &Service{
+		uuid:   config.RPC.Port,
 		config: config,
 	}
 }
 
 func (s *Service) Name() string {
-	return LightServiceName
+	return LightServiceName + "-" + s.uuid
 }
 
 func (s *Service) EndpointsNeeded() []string {
@@ -64,14 +65,18 @@ func (s *Service) Setup(ctx context.Context, dir string, pendingGenesis *types.G
 
 func (s *Service) Start(ctx context.Context, dir string, genesis *types.GenesisDoc, inputs apollo.Endpoints) (apollo.Endpoints, error) {
 	s.chainID = genesis.ChainID
-	headerHash, err := util.GetTrustedHash(ctx, inputs[consensus.RPCEndpointLabel])
+
+	_, err := util.ConfigureRandomConsensusEndpoint(ctx, inputs, s.config)
 	if err != nil {
 		return nil, err
 	}
-	s.config.Header.TrustedHash = headerHash
 
 	var bridgeAddrInfo peer.AddrInfo
-	if err := bridgeAddrInfo.UnmarshalJSON([]byte(inputs[bridge.P2PEndpointLabel])); err != nil {
+	peerId, err := inputs.GetRandom(bridge.P2PEndpointLabel)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get bridge peer ID: %w", err)
+	}
+	if err := bridgeAddrInfo.UnmarshalJSON([]byte(peerId)); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal bridge addr info: %w", err)
 	}
 
@@ -82,23 +87,6 @@ func (s *Service) Start(ctx context.Context, dir string, genesis *types.GenesisD
 
 	// set the trusted peers
 	s.config.Header.TrustedPeers = []string{bridgeAddrs[0].String()}
-	consensusIP, err := utils.ValidateAddr(inputs[consensus.RPCEndpointLabel])
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse consensus RPC endpoint: %w", err)
-	}
-	s.config.Core.IP = consensusIP
-
-	rpcPort, err := util.ParsePort(inputs[consensus.RPCEndpointLabel])
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse consensus RPC endpoint: %w", err)
-	}
-	s.config.Core.RPCPort = rpcPort
-
-	grpcPort, err := util.ParsePort(inputs[consensus.GRPCEndpointLabel])
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse consensus GRPC endpoint: %w", err)
-	}
-	s.config.Core.GRPCPort = grpcPort
 
 	encConf := encoding.MakeConfig(app.ModuleEncodingRegisters...)
 
@@ -122,10 +110,10 @@ func (s *Service) Start(ctx context.Context, dir string, genesis *types.GenesisD
 		return nil, fmt.Errorf("failed to connect to bridge node: %w", err)
 	}
 
-	endpoints := map[string]string{
-		RPCEndpointLabel:  fmt.Sprintf("http://localhost:%s", s.config.RPC.Port),
-		DocsEndpointLabel: DocsEndpint,
-	}
+	var endpoints apollo.Endpoints
+	endpoints = make(map[string][]string)
+	endpoints.Add(RPCEndpointLabel, fmt.Sprintf("http://localhost:%s", s.config.RPC.Port))
+	endpoints.Add(DocsEndpointLabel, DocsEndpoint)
 
 	return endpoints, s.node.Start(ctx)
 }

@@ -26,11 +26,10 @@ const (
 	BridgeServiceName = "bridge-node"
 	RPCEndpointLabel  = "bridge-rpc"
 	P2PEndpointLabel  = "bridge-p2p"
-	// use a different port for the bridge
-	RPCPort = "36658"
 )
 
 type Service struct {
+	uuid    string
 	node    *nodebuilder.Node
 	store   nodebuilder.Store
 	chainID string
@@ -39,12 +38,13 @@ type Service struct {
 
 func New(config *nodebuilder.Config) *Service {
 	return &Service{
+		uuid:   config.RPC.Port,
 		config: config,
 	}
 }
 
 func (s *Service) Name() string {
-	return BridgeServiceName
+	return BridgeServiceName + "-" + s.uuid
 }
 
 func (s *Service) EndpointsNeeded() []string {
@@ -61,20 +61,11 @@ func (s *Service) Setup(ctx context.Context, dir string, pendingGenesis *types.G
 
 func (s *Service) Start(ctx context.Context, dir string, genesis *types.GenesisDoc, inputs apollo.Endpoints) (apollo.Endpoints, error) {
 	s.chainID = genesis.ChainID
-	rpcEndpoint, ok := inputs[consensus.RPCEndpointLabel]
-	if !ok {
-		return nil, fmt.Errorf("RPC endpoint not provided")
-	}
 
-	headerHash, err := util.GetTrustedHash(ctx, rpcEndpoint)
+	_, err := util.ConfigureRandomConsensusEndpoint(ctx, inputs, s.config)
 	if err != nil {
 		return nil, err
 	}
-	s.config.Header.TrustedHash = headerHash
-	s.config.RPC.Port = RPCPort
-
-	// TODO: we don't take the consensus nodes endpoints here and inject them into the config,
-	// instead we assume they are the same as the defaults
 
 	encConf := encoding.MakeConfig(app.ModuleEncodingRegisters...)
 
@@ -99,10 +90,10 @@ func (s *Service) Start(ctx context.Context, dir string, genesis *types.GenesisD
 		return nil, err
 	}
 
-	endpoints := map[string]string{
-		RPCEndpointLabel: fmt.Sprintf("http://localhost:%s", s.config.RPC.Port),
-		P2PEndpointLabel: string(addrInfo),
-	}
+	var endpoints apollo.Endpoints
+	endpoints = make(map[string][]string)
+	endpoints.Add(RPCEndpointLabel, fmt.Sprintf("http://localhost:%s", s.config.RPC.Port))
+	endpoints.Add(P2PEndpointLabel, string(addrInfo))
 
 	return endpoints, s.node.Start(ctx)
 }
